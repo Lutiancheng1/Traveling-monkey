@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         微软Rewards自动搜索脚本 - 通用版
-// @version      2.4.2
+// @version      2.5.0
 // @description  微软Rewards自动搜索获取积分 - 通用版本：自动检测PC/移动环境，智能适配功能
 // @author       lutiancheng1
 // @match        https://*.bing.com/*
@@ -202,6 +202,44 @@ function showAppKeyDialog() {
         const wordType = isHotWords ? '热门搜索词' : '默认搜索词';
         showNotification(`词库已更新：${wordType}`, 'success');
       });
+    }
+  }
+}
+
+// 清除今日进度的函数
+function clearTodayProgress() {
+  const currentProgress = getTodaySearchCount();
+
+  if (currentProgress === 0) {
+    showNotification(`${config.platformName}今日进度已经是0，无需清除`, 'info');
+    return;
+  }
+
+  const confirmMessage = `确定要清除${config.platformName}今日进度吗？\n\n当前进度：${currentProgress} / ${config.maxRewards} 次\n\n清除后将重新开始计数。`;
+
+  if (confirm(confirmMessage)) {
+    // 清除平台特定的搜索计数
+    savePlatformSearchCount(0);
+
+    // 如果是移动版，还需要清除每日缓存
+    if (config.enableDailyCache) {
+      const todayKey = getTodayKey();
+      const savedData = GM_getValue(platformStorageKeys.dailyProgress, '{}');
+      const progressData = JSON.parse(savedData);
+
+      if (progressData[todayKey]) {
+        delete progressData[todayKey];
+        GM_setValue(platformStorageKeys.dailyProgress, JSON.stringify(progressData));
+      }
+    }
+
+    showNotification(`${config.platformName}今日进度已清除，重新开始计数`, 'success');
+    console.log(`${config.platformName}今日进度已清除`);
+
+    // 刷新页面标题（如果存在的话）
+    const titleElement = document.getElementsByTagName("title")[0];
+    if (titleElement && titleElement.innerHTML.includes(config.platformName)) {
+      location.reload();
     }
   }
 }
@@ -408,6 +446,10 @@ if (isPCEnvironment) {
     showAppKeyDialog();
   }, 'o');
 
+  let menu5 = GM_registerMenuCommand('🗑️ 清除今日进度', function () {
+    clearTodayProgress();
+  }, 'o');
+
 } else {
   // 移动版菜单
   let menu1 = GM_registerMenuCommand('📱 快速开始（无暂停）', function () {
@@ -461,6 +503,10 @@ if (isPCEnvironment) {
 
   let menu6 = GM_registerMenuCommand('🔑 设置API密钥', function () {
     showAppKeyDialog();
+  }, 'o');
+
+  let menu7 = GM_registerMenuCommand('🗑️ 清除今日进度', function () {
+    clearTodayProgress();
   }, 'o');
 
 
