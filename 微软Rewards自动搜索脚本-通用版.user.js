@@ -421,7 +421,7 @@ getHotSearchWords()
 // 根据环境创建不同的菜单
 if (isPCEnvironment) {
   // PC版菜单
-  let menu1 = GM_registerMenuCommand('�️ PC版开始', 暂 function () {
+  let menu1 = GM_registerMenuCommand('🚀 PC版开始', function () {
     startPCSearchTask(true); // PC版默认启用暂停模式
   }, 'o');
 
