@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         微软Rewards自动搜索脚本 - 通用版
-// @version      2.4.1
+// @version      2.4.2
 // @description  微软Rewards自动搜索获取积分 - 通用版本：自动检测PC/移动环境，智能适配功能
 // @author       lutiancheng1
 // @match        https://*.bing.com/*
@@ -578,8 +578,14 @@ function showSearchWordsModal(words, wordType) {
     `;
   header.innerHTML = `
         <span>📝 当前搜索词库 (${wordType} - 共${words.length}条)</span>
-        <span style="cursor: pointer; font-size: 24px; opacity: 0.8;" onclick="this.closest('#search-words-modal').remove()">×</span>
+        <span id="modal-close-btn" style="cursor: pointer; font-size: 24px; opacity: 0.8; user-select: none;">×</span>
     `;
+
+  // 为关闭按钮添加事件监听器
+  const closeButton = header.querySelector('#modal-close-btn');
+  closeButton.addEventListener('click', () => {
+    overlay.remove();
+  });
 
   const content = document.createElement('div');
   content.style.cssText = `
@@ -625,62 +631,9 @@ function showSearchWordsModal(words, wordType) {
     wordsList.appendChild(wordItem);
   });
 
-  const footer = document.createElement('div');
-  footer.style.cssText = `
-        padding: 15px 20px;
-        background: #f8f9fa;
-        border-top: 1px solid #e9ecef;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    `;
-
-  const copyBtn = document.createElement('button');
-  copyBtn.innerHTML = '📋 复制所有词汇';
-  copyBtn.style.cssText = `
-        background: #28a745;
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: background 0.2s ease;
-    `;
-  copyBtn.onclick = () => {
-    navigator.clipboard.writeText(words.join('\n')).then(() => {
-      showNotification('搜索词已复制到剪贴板', 'success');
-    }).catch(() => {
-      const textArea = document.createElement('textarea');
-      textArea.value = words.join('\n');
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      showNotification('搜索词已复制到剪贴板', 'success');
-    });
-  };
-
-  const closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '关闭';
-  closeBtn.style.cssText = `
-        background: #6c757d;
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 14px;
-    `;
-  closeBtn.onclick = () => overlay.remove();
-
-  footer.appendChild(copyBtn);
-  footer.appendChild(closeBtn);
-
   content.appendChild(wordsList);
   modal.appendChild(header);
   modal.appendChild(content);
-  modal.appendChild(footer);
   overlay.appendChild(modal);
 
   const style = document.createElement('style');
