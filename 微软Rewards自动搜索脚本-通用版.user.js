@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         微软Rewards自动搜索脚本 - 通用版
-// @version      2.5.0
+// @version      2.5.1
 // @description  微软Rewards自动搜索获取积分 - 通用版本：自动检测PC/移动环境，智能适配功能
 // @author       lutiancheng1
 // @match        https://*.bing.com/*
@@ -9,7 +9,6 @@
 // @icon         https://www.bing.com/favicon.ico
 // @connect      gumengya.com
 // @run-at       document-end
-// @note         通用版本 - 2025年8月14日更新
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
 // @grant        GM_openInTab
@@ -422,12 +421,8 @@ getHotSearchWords()
 // 根据环境创建不同的菜单
 if (isPCEnvironment) {
   // PC版菜单
-  let menu1 = GM_registerMenuCommand('🚀 PC快速开始（无暂停）', function () {
-    startPCSearchTask(false);
-  }, 'o');
-
-  let menu1_safe = GM_registerMenuCommand('🛡️ PC安全开始（带暂停）', function () {
-    startPCSearchTask(true);
+  let menu1 = GM_registerMenuCommand('�️ PC版开始', 暂 function () {
+    startPCSearchTask(true); // PC版默认启用暂停模式
   }, 'o');
 
   let menu2 = GM_registerMenuCommand('⏹️ 停止搜索', function () {
@@ -522,8 +517,8 @@ function startPCSearchTask(enablePause) {
     return;
   }
 
-  enable_pause = enablePause;
-  const modeText = enablePause ? '安全模式（每5次暂停5分钟）' : '快速模式（无暂停）';
+  enable_pause = enablePause; // PC版固定启用暂停模式
+  const modeText = '安全模式（每5次暂停5分钟）';
 
   showNotification(`开始执行搜索任务 - ${modeText}\n已完成：${currentCount} / ${config.maxRewards} 次\n剩余：${remaining} 次`, 'info');
   console.log(`开始${config.platformName}搜索任务 - ${modeText}，已完成：${currentCount} 次，剩余：${remaining} 次`);
