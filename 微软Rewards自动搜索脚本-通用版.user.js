@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         微软Rewards自动搜索脚本 - 通用版
-// @version      2.4.0
+// @version      2.4.1
 // @description  微软Rewards自动搜索获取积分 - 通用版本：自动检测PC/移动环境，智能适配功能
 // @author       lutiancheng1
 // @match        https://*.bing.com/*
@@ -384,7 +384,7 @@ getHotSearchWords()
 // 根据环境创建不同的菜单
 if (isPCEnvironment) {
   // PC版菜单
-  let menu1 = GM_registerMenuCommand('� PC快版速开始（无暂停）', function () {
+  let menu1 = GM_registerMenuCommand('🚀 PC快速开始（无暂停）', function () {
     startPCSearchTask(false);
   }, 'o');
 
