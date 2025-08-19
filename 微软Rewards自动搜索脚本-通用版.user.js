@@ -1,7 +1,8 @@
 // ==UserScript==
+// @ts-nocheck
 // @name         微软Rewards自动搜索脚本 - 通用版
-// @version      3.0.0
-// @description  微软Rewards自动搜索获取积分 - 通用版本：智能环境检测、手动启动控制、搜索词缓存、暂停模式记忆
+// @version      3.1.0
+// @description  微软Rewards自动搜索获取积分 - 通用版本：智能环境检测、手动启动控制、搜索词缓存、暂停模式记忆、优化通知提示
 // @author       lutiancheng1
 // @match        https://*.bing.com/*
 // @exclude      https://rewards.bing.com/*
@@ -20,51 +21,21 @@
 // @updateURL https://update.greasyfork.org/scripts/545879/%E5%BE%AE%E8%BD%AFRewards%E8%87%AA%E5%8A%A8%E6%90%9C%E7%B4%A2%E8%84%9A%E6%9C%AC%20-%20%E9%80%9A%E7%94%A8%E7%89%88.meta.js
 // ==/UserScript==
 
-/*
- * 微软Rewards自动搜索脚本 - 通用版 v3.0.0
- * 
- * 🚀 核心特性：
- * - 智能环境检测：自动识别PC/移动端，适配不同参数
- * - 手动启动控制：完全由用户控制，不会自动执行搜索
- * - 智能搜索词缓存：热门搜索词缓存一天，默认搜索词每次尝试更新
- * - 暂停模式记忆：记住用户选择的暂停模式设置
- * - 跨页面状态保持：页面跳转后保持任务状态
- * 
- * 📱 平台适配：
- * - PC版：40次搜索，字符串混淆，随机延迟10-30秒，每5次暂停5分钟
- * - 移动版：30次搜索，次数后缀，固定45秒间隔，每5次暂停4分钟
- * 
- * 🎯 使用说明：
- * 1. 在任何Bing页面加载脚本，显示"脚本已就绪"通知
- * 2. 点击菜单中的"开始"按钮手动启动搜索任务
- * 3. 选择快速模式（无暂停）或安全模式（带暂停）
- * 4. 脚本会自动执行搜索并在暂停时跳转到等待页面
- * 5. 可随时通过菜单查看进度、停止任务或刷新词库
- * 
- * 🔧 高级功能：
- * - 支持故梦API密钥设置获取更稳定的热门搜索词
- * - 平台独立的进度跟踪和暂停模式记忆
- * - 自动清理过期缓存和数据
- * - 详细的状态显示和调试日志
- * 
- * ⚠️ 注意事项：
- * - 脚本不会自动执行，完全由用户手动控制
- * - 建议在非高峰时段使用，避免频繁请求
- * - 如遇异常可通过菜单停止任务或清除进度
- */
-
 // 环境检测
 const isMobile = /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent) ||
   (navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome'));
 const isStay = navigator.userAgent.includes('Stay') || window.location.href.includes('stay');
 const isPCEnvironment = !isMobile && !isStay;
 
-console.log('环境检测结果:', {
-  isMobile: isMobile,
-  isStay: isStay,
-  isPCEnvironment: isPCEnvironment,
-  userAgent: navigator.userAgent
-});
+// 只在首次加载时打印环境信息
+if (!window.rewardsScriptLoaded) {
+  console.log('🚀 微软Rewards脚本初始化');
+  console.log('环境检测:', {
+    platform: isPCEnvironment ? 'PC版' : '移动版',
+    userAgent: navigator.userAgent.substring(0, 50) + '...'
+  });
+  window.rewardsScriptLoaded = true;
+}
 
 // 根据环境设置参数
 const config = {
@@ -72,13 +43,11 @@ const config = {
   pauseTime: isPCEnvironment ? 300000 : 240000, // PC版5分钟，移动版4分钟
   searchDelay: isPCEnvironment ?
     () => Math.floor(Math.random() * 20000) + 10000 : // PC版10-30秒随机
-    () => 45000, // 移动版固定45秒
+    () => Math.floor(Math.random() * 15000) + 30000, // 移动版30-45秒随机
   enableStringObfuscation: isPCEnvironment, // 只有PC版启用字符串混淆
-  scrollDuration: isPCEnvironment ? 4000 : 3000, // PC版4秒，移动版3秒
+  scrollDuration: isPCEnvironment ? 4000 : 5000, // PC版4秒，移动版5秒（更慢更自然）
   platformName: isPCEnvironment ? 'PC版' : '移动版'
 };
-
-console.log('配置参数:', config);
 
 // 全局变量
 var search_words = [];
@@ -117,32 +86,103 @@ function getTodayKey() {
 }
 
 function getTodayCount() {
-  const todayKey = getTodayKey();
-  const savedData = GM_getValue('dailyProgress', '{}');
-  const progressData = JSON.parse(savedData);
-  return progressData[todayKey] || 0;
+  try {
+    const todayKey = getTodayKey();
+    const savedData = GM_getValue('dailyProgress', '{}');
+    // 确保savedData是有效的JSON字符串
+    if (!savedData || typeof savedData !== 'string') {
+      console.log(`获取dailyProgress失败，使用默认值`);
+      return 0;
+    }
+
+    let progressData;
+    try {
+      progressData = JSON.parse(savedData);
+    } catch (e) {
+      console.log(`解析dailyProgress失败: ${e.message}，使用默认值`);
+      return 0;
+    }
+
+    // 确保progressData是对象且todayKey存在
+    if (!progressData || typeof progressData !== 'object') {
+      console.log(`dailyProgress不是有效对象，使用默认值`);
+      return 0;
+    }
+
+    // 确保todayKey对应的值存在
+    if (progressData[todayKey] === undefined || progressData[todayKey] === null) {
+      return 0;
+    }
+
+    return progressData[todayKey] || 0;
+  } catch (error) {
+    console.log(`getTodayCount出错: ${error.message}，使用默认值`);
+    return 0;
+  }
 }
 
 function saveTodayCount(count) {
-  const todayKey = getTodayKey();
-  const savedData = GM_getValue('dailyProgress', '{}');
-  const progressData = JSON.parse(savedData);
-  progressData[todayKey] = count;
+  try {
+    const todayKey = getTodayKey();
+    const savedData = GM_getValue('dailyProgress', '{}');
 
-  // 清理7天前的数据
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const cutoffDate = sevenDaysAgo.getFullYear() + '-' + (sevenDaysAgo.getMonth() + 1).toString().padStart(2, '0') + '-' + sevenDaysAgo.getDate().toString().padStart(2, '0');
-  const cutoffKey = `${cutoffDate}_${config.platformName}`;
-
-  Object.keys(progressData).forEach(key => {
-    if (key < cutoffKey) {
-      delete progressData[key];
+    // 确保savedData是有效的JSON字符串
+    if (!savedData || typeof savedData !== 'string') {
+      console.log(`获取dailyProgress失败，使用空对象初始化`);
+      GM_setValue('dailyProgress', '{}');
+      // 避免递归调用可能导致的栈溢出
+      setTimeout(() => saveTodayCount(count), 100);
+      return;
     }
-  });
 
-  GM_setValue('dailyProgress', JSON.stringify(progressData));
-  console.log(`${config.platformName}今日进度已保存:`, todayKey, '=', count);
+    let progressData;
+    try {
+      progressData = JSON.parse(savedData);
+    } catch (e) {
+      console.log(`解析dailyProgress失败: ${e.message}，使用空对象初始化`);
+      GM_setValue('dailyProgress', '{}');
+      // 避免递归调用可能导致的栈溢出
+      setTimeout(() => saveTodayCount(count), 100);
+      return;
+    }
+
+    // 确保progressData是对象
+    if (!progressData || typeof progressData !== 'object') {
+      console.log(`dailyProgress不是有效对象，使用空对象初始化`);
+      GM_setValue('dailyProgress', '{}');
+      // 避免递归调用可能导致的栈溢出
+      setTimeout(() => saveTodayCount(count), 100);
+      return;
+    }
+
+    // 确保count是数字
+    const numCount = typeof count === 'number' ? count : parseInt(count) || 0;
+    progressData[todayKey] = numCount;
+
+    // 清理7天前的数据
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const cutoffDate = sevenDaysAgo.getFullYear() + '-' + (sevenDaysAgo.getMonth() + 1).toString().padStart(2, '0') + '-' + sevenDaysAgo.getDate().toString().padStart(2, '0');
+    const cutoffKey = `${cutoffDate}_${config.platformName}`;
+
+    Object.keys(progressData).forEach(key => {
+      if (key < cutoffKey) {
+        delete progressData[key];
+      }
+    });
+
+    GM_setValue('dailyProgress', JSON.stringify(progressData));
+    console.log(`${config.platformName}今日进度已保存:`, todayKey, '=', numCount);
+  } catch (error) {
+    console.log(`saveTodayCount出错: ${error.message}`);
+    // 出错时尝试重置进度数据
+    try {
+      GM_setValue('dailyProgress', '{}');
+      console.log('已重置进度数据');
+    } catch (e) {
+      console.log(`重置进度数据失败: ${e.message}`);
+    }
+  }
 }
 
 // 保存暂停模式设置
@@ -205,7 +245,7 @@ function getSearchWordsCache() {
     try {
       const parsed = JSON.parse(cacheData);
       if (parsed.date === dateKey && parsed.words && parsed.words.length > 0) {
-        console.log(`${config.platformName}使用缓存的搜索词:`, parsed.words.length, '条');
+        // 简化日志输出
         return parsed.words;
       }
     } catch (error) {
@@ -280,15 +320,23 @@ function showAppKeyDialog() {
 function clearTodayProgress() {
   const currentProgress = getTodayCount();
 
-  if (currentProgress === 0) {
-    showNotification(`${config.platformName}今日进度已经是0，无需清除`, 'info');
+  // 即使进度为0，也可能需要重置其他状态和跳转首页
+  const hasOtherStates = isTaskManuallyStarted || enable_pause || getManualStartFlag() || getPauseMode();
+
+  if (currentProgress === 0 && !hasOtherStates) {
+    // 进度为0且没有其他状态，直接跳转首页
+    showNotification(`${config.platformName}今日进度已经是0，直接跳转到首页`, 'info');
+    setTimeout(() => {
+      location.href = "https://www.bing.com/";
+    }, 1500);
     return;
   }
 
-  const confirmMessage = `确定要清除${config.platformName}今日进度吗？\n\n当前进度：${currentProgress} / ${config.maxRewards} 次\n\n清除后将重新开始计数。`;
+  const progressText = currentProgress === 0 ? '0（但可能有其他状态需要重置）' : `${currentProgress}`;
+  const confirmMessage = `确定要重置${config.platformName}所有任务状态并跳转到首页吗？\n\n当前进度：${progressText} / ${config.maxRewards} 次\n\n将重置以下内容：\n• 今日搜索进度\n• 任务运行状态\n• 暂停模式设置\n• 手动启动标志\n\n保留：API密钥、搜索词缓存\n\n重置后将跳转到首页重新开始。`;
 
   if (confirm(confirmMessage)) {
-    // 清除今日缓存
+    // 1. 清除今日进度缓存
     const todayKey = getTodayKey();
     const savedData = GM_getValue('dailyProgress', '{}');
     const progressData = JSON.parse(savedData);
@@ -298,14 +346,33 @@ function clearTodayProgress() {
       GM_setValue('dailyProgress', JSON.stringify(progressData));
     }
 
-    showNotification(`${config.platformName}今日进度已清除，重新开始计数`, 'success');
-    console.log(`${config.platformName}今日进度已清除`);
+    // 2. 清除所有运行时状态变量
+    isTaskStopped = true;           // 停止当前任务
+    isTaskManuallyStarted = false;  // 清除手动启动标志
+    enable_pause = false;           // 清除暂停模式
 
-    // 刷新页面标题（如果存在的话）
-    const titleElement = document.getElementsByTagName("title")[0];
-    if (titleElement && titleElement.innerHTML.includes(config.platformName)) {
-      location.reload();
-    }
+    // 3. 清除所有持久化的任务状态（保留用户设置如API密钥）
+    clearManualStartFlag();         // 清除持久化的手动启动标志
+    savePauseMode(false);          // 清除持久化的暂停模式设置
+
+    // 注意：不清除以下用户设置
+    // - userAppKey: 用户的API密钥设置
+    // - searchWords_*: 搜索词缓存（用户可能想保留）
+
+    console.log(`${config.platformName}所有任务状态已重置：`);
+    console.log(`✅ 今日进度: ${currentProgress} -> 0`);
+    console.log(`✅ 任务状态: 已停止`);
+    console.log(`✅ 暂停模式: 已关闭`);
+    console.log(`✅ 手动启动标志: 已清除`);
+    console.log(`ℹ️  保留用户设置: API密钥、搜索词缓存`);
+
+    const statusText = currentProgress === 0 ? '所有任务状态已重置' : '今日进度和所有状态已清除';
+    showNotification(`${config.platformName}${statusText}\n即将跳转到首页重新开始`, 'success');
+
+    // 4. 清除完毕后跳转到首页
+    setTimeout(() => {
+      location.href = "https://www.bing.com/";
+    }, 2000); // 2秒后跳转，让用户看到通知
   }
 }
 
@@ -377,6 +444,9 @@ function getHotSearchWords() {
     let completedRequests = 0;
     let successfulRequests = 0;
 
+    // 根据平台动态计算每个数据源需要获取的词汇数量
+    const wordsPerSource = isPCEnvironment ? 10 : 8;
+
     // 为每个数据源发送请求
     sources.forEach((source, index) => {
       let url = hotSearchAPI.url + source;
@@ -402,12 +472,12 @@ function getHotSearchWords() {
               const words = hotSearchAPI.parser(data);
 
               if (words && words.length > 0) {
-                // 过滤并取前8条
+                // 过滤并根据平台取相应数量的词汇
                 const filteredWords = words.filter(word =>
                   word && word.length >= 2 && word.length <= 20 &&
                   !word.includes('http') && !word.includes('www') &&
                   !word.includes('undefined') && word.trim() !== ''
-                ).slice(0, 8);
+                ).slice(0, wordsPerSource);
 
                 if (filteredWords.length > 0) {
                   allWords.push(...filteredWords);
@@ -463,7 +533,7 @@ function getHotSearchWords() {
           resolve(default_search_words.slice(0, config.maxRewards));
         }
       }
-    }, 15000);
+    }, 5000);
   });
 }
 
@@ -479,7 +549,7 @@ function initializeSearchWords() {
       // 如果缓存的是热门搜索词，直接使用
       search_words = cachedWords;
       const wordType = '热门搜索词（缓存）';
-      console.log(`${config.platformName}搜索词库已加载完成：${wordType}，共 ${cachedWords.length} 条`);
+      // 简化日志输出
 
       // 完成初始化
       completeInitialization(wordType, cachedWords.length);
@@ -502,7 +572,7 @@ function attemptToGetHotWords(fallbackWords) {
       search_words = words;
       const isHotWords = !words.includes("人工智能发展趋势");
       const wordType = isHotWords ? '热门搜索词' : '默认搜索词';
-      console.log(`${config.platformName}搜索词库已加载完成：${wordType}，共 ${words.length} 条`);
+      // 简化日志输出
 
       // 保存到缓存
       saveSearchWordsCache(words);
@@ -547,21 +617,20 @@ function completeInitialization(wordType, wordCount) {
     const hasRunningTask = todayCount > 0 && !isTaskStopped;
 
     if (isPauseResume || hasManualStartFlag) {
-      console.log("初始化完成，检测到需要执行的任务");
       exec();
     } else if (isSearchPage && hasRunningTask) {
-      console.log("初始化完成，在搜索结果页面检测到运行中的任务");
       exec();
-    } else {
-      console.log("初始化完成，等待用户手动启动或任务恢复");
     }
   }, 1000);
 
-  // 只在没有运行任务时显示就绪通知
+  // 只在首页打印一次初始化信息
   const currentCount = getTodayCount();
-  if (window.location.href.includes('bing.com') && currentCount === 0) {
-    const notificationType = wordType.includes('默认') ? 'info' : 'success';
-    showNotification(`${config.platformName}脚本已就绪！\n\n词库类型：${wordType}\n词汇数量：${wordCount} 条\n\n请点击菜单中的"开始"按钮执行搜索任务`, notificationType);
+  const isHomePage = window.location.href === 'https://www.bing.com/' ||
+    (window.location.href.includes('bing.com') && !window.location.href.includes('/search'));
+
+  if (isHomePage && !window.rewardsInitPrinted) {
+    console.log(`✅ ${config.platformName}脚本就绪 | 词库：${wordType}(${wordCount}条) | 进度：${currentCount}/${config.maxRewards}`);
+    window.rewardsInitPrinted = true;
   }
 }
 
@@ -660,7 +729,11 @@ if (isPCEnvironment) {
     showNotification(`${config.platformName}状态报告 v3.0.0：\n\n今日进度：${todayCount} / ${config.maxRewards} 次 (${progressPercent}%)\n剩余次数：${remainingCount} 次\n任务状态：${statusText}\n词库类型：${wordType} (${wordCount}条)`, 'info');
   }, 'o');
 
-  let menu4 = GM_registerMenuCommand('🔄 刷新词库', function () {
+  let menu4 = GM_registerMenuCommand('🔑 设置API密钥', function () {
+    showAppKeyDialog();
+  }, 'o');
+
+  let menu5 = GM_registerMenuCommand('🔄 刷新词库', function () {
     showNotification('正在从多个数据源刷新搜索词库...', 'info');
     getHotSearchWords()
       .then(words => {
@@ -680,7 +753,7 @@ if (isPCEnvironment) {
       });
   }, 'o');
 
-  let menu5 = GM_registerMenuCommand('📝 查看所有搜索词', function () {
+  let menu6 = GM_registerMenuCommand('📝 查看所有搜索词', function () {
     if (search_words.length === 0) {
       showNotification('搜索词库为空，请先刷新词库', 'warning');
       return;
@@ -690,10 +763,6 @@ if (isPCEnvironment) {
     const wordType = isHotWords ? '热门搜索词' : '默认搜索词';
 
     showSearchWordsModal(search_words, wordType);
-  }, 'o');
-
-  let menu6 = GM_registerMenuCommand('🔑 设置API密钥', function () {
-    showAppKeyDialog();
   }, 'o');
 
   let menu7 = GM_registerMenuCommand('🗑️ 清除今日进度', function () {
@@ -813,9 +882,11 @@ function showSearchWordsModal(words, wordType) {
 
   // 为关闭按钮添加事件监听器
   const closeButton = header.querySelector('#modal-close-btn');
-  closeButton.addEventListener('click', () => {
-    overlay.remove();
-  });
+  if (closeButton) {
+    closeButton.addEventListener('click', () => {
+      overlay.remove();
+    });
+  }
 
   const content = document.createElement('div');
   content.style.cssText = `
@@ -976,10 +1047,11 @@ function exec() {
 
   // 获取当前任务状态
   let todayCount = getTodayCount();
-  const hasRunningTask = todayCount > 0 && !isTaskStopped;
+  const searchTaskStarted = sessionStorage.getItem('searchTaskStarted') === 'true';
+  const hasRunningTask = (todayCount > 0 || searchTaskStarted) && !isTaskStopped;
   const hasManualStartFlag = getManualStartFlag(); // 检查持久化的手动启动标志
 
-  console.log(`页面状态检查: 搜索页=${isSearchPage}, 暂停恢复=${isPauseResume}, 有运行任务=${hasRunningTask}, 今日计数=${todayCount}, 任务已停止=${isTaskStopped}, 手动启动标志=${hasManualStartFlag}`);
+  console.log(`页面状态检查: 搜索页=${isSearchPage}, 暂停恢复=${isPauseResume}, 搜索任务已启动=${searchTaskStarted}, 有运行任务=${hasRunningTask}, 今日计数=${todayCount}, 任务已停止=${isTaskStopped}, 手动启动标志=${hasManualStartFlag}`);
 
   // 关键修复：只有在以下情况才执行搜索逻辑
   // 1. 暂停恢复页面（br_msg=Please-Wait）
@@ -996,24 +1068,29 @@ function exec() {
     // 恢复暂停模式设置
     enable_pause = getPauseMode();
     console.log(`恢复暂停模式设置: ${enable_pause}`);
+
+    // 如果当前在首页，直接执行第一次搜索，不要在这里更新计数器
+    if (window.location.href.includes('bing.com') && !isSearchPage) {
+      console.log("在首页启动任务，直接执行第一次搜索");
+      executeFirstSearch();
+      return;
+    }
   } else if (hasRunningTask && isSearchPage) {
     console.log("检测到有正在运行的任务，在搜索页面继续执行搜索逻辑");
     // 恢复之前保存的暂停模式
     enable_pause = getPauseMode();
     console.log(`恢复暂停模式设置: ${enable_pause}`);
 
-    // 在搜索结果页面添加延迟，避免立即执行下一次搜索
-    const searchDelay = config.searchDelay();
-    console.log(`在搜索结果页面，延迟${searchDelay / 1000}秒后执行下一次搜索`);
-
-    setTimeout(() => {
-      if (!isTaskStopped) {
-        console.log("搜索结果页面延迟结束，继续执行搜索逻辑");
-        // 继续执行搜索逻辑，但不要重复更新计数
-        continueSearchFromResultPage();
-      }
-    }, searchDelay);
+    // 在搜索结果页面，等待滚动完成后使用随机延迟执行下一次搜索
+    console.log("在搜索结果页面，等待滚动完成后使用随机延迟执行下一次搜索");
+    continueSearchFromResultPage();
     return; // 提前返回，避免立即执行
+  } else if (isSearchPage && todayCount > 0) {
+    // 额外检查：如果在搜索页面且有计数，说明任务正在进行
+    console.log("在搜索页面检测到任务进行中，继续执行");
+    enable_pause = getPauseMode();
+    continueSearchFromResultPage();
+    return;
   } else {
     console.log("脚本已就绪，等待用户手动启动任务");
     return;
@@ -1060,10 +1137,15 @@ function exec() {
         return;
       }
 
+      // 暂停结束后，准备执行下一次搜索
+      const nextCount = currentCount + 1;
       let baseWord = search_words[currentCount % search_words.length];
-      let searchWord = generateSearchWord(baseWord, currentCount + 1);
+      let searchWord = generateSearchWord(baseWord, nextCount);
 
-      console.log(`暂停等待结束，继续执行第 ${currentCount + 1} 次搜索`);
+      console.log(`暂停等待结束，继续执行第 ${nextCount} 次搜索`);
+
+      // 先更新计数器，然后执行搜索
+      saveTodayCount(nextCount);
       executeSearch(currentCount, searchWord, randomString, randomCvid);
     }, pauseTime);
     return;
@@ -1089,59 +1171,43 @@ function exec() {
   console.log("今日已执行次数:", todayCount);
   console.log("剩余搜索次数:", config.maxRewards - todayCount);
 
-  // 执行搜索
-  if (todayCount < config.maxRewards) {
-    // 先更新计数器
-    const newCount = todayCount + 1;
-    saveTodayCount(newCount);
+  // 注意：搜索逻辑已经在上面的条件分支中处理，这里不需要重复执行
 
-    // 更新页面标题
-    let tt = document.getElementsByTagName("title")[0];
-    const remainingCount = config.maxRewards - newCount;
-    tt.innerHTML = `[${config.platformName}: ${newCount}/${config.maxRewards} | 剩余: ${remainingCount}] ` + tt.innerHTML;
+  // 执行首次搜索的函数（从首页启动时使用）
+  function executeFirstSearch() {
+    const todayCount = getTodayCount();
 
-    smoothScrollToBottom();
-
-    // 对于第一次搜索，使用较短的延迟
-    const actualDelay = (newCount === 1) ? 3000 : randomDelay;
-    console.log(`准备执行第${newCount}次搜索，延迟${actualDelay / 1000}秒...`);
-
-    // 为第一次搜索显示开始通知
-    if (newCount === 1) {
-      showNotification(`🚀 ${config.platformName}搜索任务开始！\n\n即将执行第1次搜索\n模式：${enable_pause ? '安全模式（带暂停）' : '快速模式（无暂停）'}`, 'info');
+    // 检查是否已完成所有搜索
+    if (todayCount >= config.maxRewards) {
+      console.log(`${config.platformName}搜索任务已完成！已执行 ${todayCount} 次搜索。`);
+      return;
     }
 
-    setTimeout(function () {
-      if (isTaskStopped) {
-        console.log("任务已停止，取消搜索");
-        return;
-      }
+    // 不再提前更新计数器，只在搜索结果页面加载完成后更新
+    // 设置一个标记，表示任务已启动但尚未完成第一次搜索
+    sessionStorage.setItem('searchTaskStarted', 'true');
+    console.log(`首次搜索：准备执行，当前计数 ${todayCount}`);
 
-      let baseWord = search_words[todayCount % search_words.length];
-      let searchWord = generateSearchWord(baseWord, newCount);
+    // 添加页面标题更新逻辑（与continueSearchFromResultPage保持一致）
+    let tt = document.getElementsByTagName("title")[0];
+    const remainingCount = config.maxRewards - todayCount;
+    if (tt) {
+      tt.innerHTML = `[${config.platformName}: ${todayCount}/${config.maxRewards} | 剩余: ${remainingCount}] ` + tt.innerHTML;
+    }
 
-      console.log(`准备搜索词: "${searchWord}"`);
+    // 立即执行第一次搜索，不等待，不显示通知
+    if (isTaskStopped) {
+      console.log("任务已停止，取消搜索");
+      return;
+    }
 
-      // 检查是否需要暂停
-      const shouldPause = enable_pause && newCount % 5 === 0 && newCount < config.maxRewards;
+    let baseWord = search_words[todayCount % search_words.length];
+    let searchWord = generateSearchWord(baseWord, todayCount);
+    let randomString = generateRandomString(4);
+    let randomCvid = generateRandomString(32);
 
-      console.log(`暂停检查: enable_pause=${enable_pause}, newCount=${newCount}, shouldPause=${shouldPause}`);
-
-      if (shouldPause) {
-        console.log(`${config.platformName}已执行${newCount}次搜索，暂停${config.pauseTime / 60000}分钟...`);
-        showNotification(`安全模式：已完成5次搜索，即将暂停${config.pauseTime / 60000}分钟防止检测...`, 'warning');
-
-        // 立即跳转到带参数的主页进行暂停等待
-        setTimeout(function () {
-          if (!isTaskStopped) {
-            location.href = "https://www.bing.com/?br_msg=Please-Wait&pause_time=" + config.pauseTime;
-          }
-        }, 2000); // 2秒后跳转，给用户看到通知的时间
-      } else {
-        console.log(`执行搜索: executeSearch(${todayCount}, "${searchWord}", "${randomString}", "${randomCvid}")`);
-        executeSearch(todayCount, searchWord, randomString, randomCvid);
-      }
-    }, actualDelay);
+    console.log(`立即执行首次搜索: "${searchWord}"`);
+    executeSearch(todayCount, searchWord, randomString, randomCvid);
   }
 
   // 执行搜索的函数
@@ -1155,80 +1221,220 @@ function exec() {
 
   // 从搜索结果页面继续执行搜索的函数
   function continueSearchFromResultPage() {
-    const todayCount = getTodayCount();
+    let todayCount = getTodayCount();
 
     // 检查是否已完成所有搜索
     if (todayCount >= config.maxRewards) {
       console.log(`${config.platformName}搜索任务已完成！已执行 ${todayCount} 次搜索。`);
       clearManualStartFlag();
-      showNotification(`${config.platformName}搜索任务已完成！已执行 ${todayCount} 次搜索。`, 'success');
       return;
     }
 
-    // 执行下一次搜索
+    // 更新计数器（因为当前搜索页面已经加载完成，说明搜索已完成）
     const newCount = todayCount + 1;
     saveTodayCount(newCount);
+    console.log(`搜索结果页面加载完成，更新计数器 ${todayCount} -> ${newCount}`);
 
-    // 更新页面标题
+    // 清除任务启动标记
+    sessionStorage.removeItem('searchTaskStarted');
+
+    // 更新页面标题显示当前进度
     let tt = document.getElementsByTagName("title")[0];
     const remainingCount = config.maxRewards - newCount;
-    tt.innerHTML = `[${config.platformName}: ${newCount}/${config.maxRewards} | 剩余: ${remainingCount}] ` + tt.innerHTML;
+    if (tt) {
+      tt.innerHTML = `[${config.platformName}: ${newCount}/${config.maxRewards} | 剩余: ${remainingCount}] ` + tt.innerHTML;
+    }
 
-    smoothScrollToBottom();
+    // 检查是否需要暂停（从会话存储中获取标记）
+    const needPauseAfterSearch = sessionStorage.getItem('needPauseAfterSearch') === 'true';
+    const pauseTime = parseInt(sessionStorage.getItem('pauseTime') || config.pauseTime.toString());
+
+    if (needPauseAfterSearch) {
+      // 清除暂停标记，避免重复暂停
+      sessionStorage.removeItem('needPauseAfterSearch');
+      sessionStorage.removeItem('pauseTime');
+
+      console.log(`${config.platformName}已完成第${newCount}次搜索，即将暂停${pauseTime / 60000}分钟...`);
+      console.log('正在滚动到页面底部...');
+
+      // 先滚动到底部
+      smoothScrollToBottom(() => {
+        console.log('页面滚动完成，5秒后跳转到暂停页面...');
+        // 滚动完成后延迟5秒再跳转
+        setTimeout(() => {
+          console.log('开始跳转到暂停页面...');
+          location.href = "https://www.bing.com/?br_msg=Please-Wait&pause_time=" + pauseTime;
+        }, 5000);
+      });
+      return; // 重要：暂停时不继续执行下一次搜索
+    }
+
+    console.log(`从搜索结果页面准备执行下一次搜索，当前进度: ${newCount}/${config.maxRewards}`);
+
+    // 准备下一次搜索的计数
+    const nextCount = newCount + 1;
+
+    // 立即开始随机延迟计时，同时开始滚动（并行进行）
+    startDelayAndScroll(newCount, nextCount);
+  }
+
+  // 滚动完成后继续搜索的函数
+  function startDelayAndScroll(todayCount, newCount) {
+    // 立即检查任务状态
+    if (isTaskStopped) {
+      console.log("任务已停止，取消搜索");
+      return;
+    }
+
+    // 再次检查是否已完成
+    if (todayCount >= config.maxRewards) {
+      console.log(`${config.platformName}搜索任务已完成！`);
+      return;
+    }
 
     // 准备搜索词
-    let baseWord = search_words[(todayCount) % search_words.length];
+    let baseWord = search_words[todayCount % search_words.length];
     let searchWord = generateSearchWord(baseWord, newCount);
     let randomString = generateRandomString(4);
     let randomCvid = generateRandomString(32);
 
-    console.log(`从搜索结果页面执行第${newCount}次搜索: "${searchWord}"`);
+    console.log(`准备执行第${newCount}次搜索: "${searchWord}"`);
 
-    // 检查是否需要暂停
-    const shouldPause = enable_pause && newCount % 5 === 0 && newCount < config.maxRewards;
+    // 先执行滚动和延迟
+    const searchDelay = config.searchDelay();
+    console.log(`开始随机延迟计时：${searchDelay / 1000}秒后执行第${newCount}次搜索...`);
 
-    if (shouldPause) {
-      console.log(`${config.platformName}已执行${newCount}次搜索，暂停${config.pauseTime / 60000}分钟...`);
-      showNotification(`安全模式：已完成5次搜索，即将暂停${config.pauseTime / 60000}分钟防止检测...`, 'warning');
+    // 同时开始滚动（不等待滚动完成）
+    console.log(`同时开始页面滚动...`);
+    smoothScrollToBottom(); // 滚动和延迟并行进行
 
-      // 立即跳转到带参数的主页进行暂停等待
-      setTimeout(function () {
-        if (!isTaskStopped) {
-          location.href = "https://www.bing.com/?br_msg=Please-Wait&pause_time=" + config.pauseTime;
-        }
-      }, 2000);
-    } else {
+    // 延迟时间到后，先检查是否需要暂停
+    setTimeout(function () {
+      if (isTaskStopped) {
+        console.log("任务已停止，取消搜索");
+        return;
+      }
+
+      // 检查是否需要暂停（在执行搜索之后检查）
+      const shouldPause = enable_pause && newCount % 5 === 0 && newCount < config.maxRewards;
+
+      // 先执行搜索，无论是否需要暂停
+      console.log(`执行第${newCount}次搜索`);
+
+      // 如果需要暂停，设置一个标记，在搜索结果页面加载后处理暂停
+      if (shouldPause) {
+        // 设置一个会话存储标记，表示这次搜索后需要暂停
+        sessionStorage.setItem('needPauseAfterSearch', 'true');
+        sessionStorage.setItem('pauseTime', config.pauseTime.toString());
+        console.log(`标记第${newCount}次搜索完成后需要暂停${config.pauseTime / 60000}分钟`);
+      }
+
+      // 执行搜索（无论是否需要暂停都先执行搜索）
       executeSearch(todayCount, searchWord, randomString, randomCvid);
-    }
+      // 注意：executeSearch会立即跳转页面，所以这里不能更新计数器
+      // 计数器的更新需要在新页面加载后进行
+    }, searchDelay);
   }
 
-  // 实现平滑滚动到页面底部的函数
-  function smoothScrollToBottom() {
-    const startPosition = window.pageYOffset;
-    const targetPosition = document.body.scrollHeight - window.innerHeight;
-    const distance = targetPosition - startPosition;
-    const duration = config.scrollDuration;
-    let startTime = null;
+  // 实现平滑滚动到页面底部的函数（移动端优化版）
+  function smoothScrollToBottom(callback) {
+    // callback 是可选参数
+    // 移动端需要更长的等待时间，因为搜索结果加载较慢
+    const waitTime = isMobile ? 4000 : 1500;
 
-    function animation(currentTime) {
-      if (startTime === null) startTime = currentTime;
-      const timeElapsed = currentTime - startTime;
-      const progress = Math.min(timeElapsed / duration, 1);
+    // 简化等待滚动日志
 
-      const easeInOutQuad = progress < 0.5
-        ? 2 * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+    setTimeout(() => {
+      // 移动端需要更多检查次数和更长间隔
+      let checkCount = 0;
+      const maxChecks = isMobile ? 10 : 6;
+      const checkInterval = isMobile ? 800 : 500;
+      let lastHeight = 0;
+      let stableCount = 0; // 连续稳定次数
 
-      const currentPosition = startPosition + (distance * easeInOutQuad);
-      window.scrollTo(0, currentPosition);
+      function checkAndScroll() {
+        const currentHeight = document.body.scrollHeight;
+        const hasSearchResults = document.querySelector('#b_results, .b_algo, .b_searchboxForm, [data-priority]');
 
-      if (progress < 1) {
-        requestAnimationFrame(animation);
+        // 简化滚动检查日志
+
+        // 检查页面高度是否稳定
+        if (currentHeight === lastHeight) {
+          stableCount++;
+        } else {
+          stableCount = 0;
+          lastHeight = currentHeight;
+        }
+
+        // 满足以下条件之一就开始滚动：
+        // 1. 页面高度连续2次稳定且检测到搜索结果
+        // 2. 达到最大检查次数
+        // 3. 页面高度足够大（说明内容已加载）
+        const shouldScroll = (stableCount >= 2 && hasSearchResults) ||
+          checkCount >= maxChecks - 1 ||
+          currentHeight > 2000;
+
+        if (shouldScroll) {
+          // 简化滚动开始日志
+          performScroll();
+        } else {
+          checkCount++;
+          setTimeout(checkAndScroll, checkInterval);
+        }
       }
-    }
 
-    if (distance > 100) {
-      requestAnimationFrame(animation);
-    }
+      function performScroll() {
+        const startPosition = window.pageYOffset;
+        const targetPosition = Math.max(0, document.body.scrollHeight - window.innerHeight);
+        const distance = targetPosition - startPosition;
+        const duration = config.scrollDuration;
+        let startTime = null;
+
+        // 简化滚动详情日志
+
+        function animation(currentTime) {
+          if (startTime === null) startTime = currentTime;
+          const timeElapsed = currentTime - startTime;
+          const progress = Math.min(timeElapsed / duration, 1);
+
+          const easeInOutQuad = progress < 0.5
+            ? 2 * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+          const currentPosition = startPosition + (distance * easeInOutQuad);
+          window.scrollTo(0, currentPosition);
+
+          if (progress < 1) {
+            requestAnimationFrame(animation);
+          } else {
+            // 简化滚动完成日志
+
+            // 移动端额外滚动一点，确保触发更多内容加载
+            if (isMobile && distance > 100) {
+              setTimeout(() => {
+                window.scrollTo(0, window.pageYOffset + 200);
+                // 简化移动端滚动日志
+                // 移动端额外滚动完成后调用回调
+                if (callback) callback();
+              }, 500);
+            } else {
+              // PC端或滚动距离小的情况，直接调用回调
+              if (callback) callback();
+            }
+          }
+        }
+
+        if (distance > 30) { // 进一步降低最小滚动距离阈值
+          requestAnimationFrame(animation);
+        } else {
+          // 简化跳过滚动日志
+          // 跳过滚动时也要调用回调
+          if (callback) callback();
+        }
+      }
+
+      // 开始检查
+      checkAndScroll();
+    }, waitTime);
   }
 }
