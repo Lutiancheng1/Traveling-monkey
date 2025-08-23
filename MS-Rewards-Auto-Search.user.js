@@ -23,9 +23,11 @@
 // @grant        unsafeWindow
 // @require      https://cdn.jsdelivr.net/npm/eruda@3.0.1/eruda.min.js
 // @license      MIT
-// @homepage     https://github.com/your-repo/ms-rewards-auto-search
-// @supportURL   https://github.com/your-repo/ms-rewards-auto-search/issues
+// @homepage    https://github.com/Lutiancheng1/Traveling-monkey/
+// @supportURL   https://github.com/Lutiancheng1/Traveling-monkey/issues
 // @ts-nocheck
+// @downloadURL https://update.greasyfork.org/scripts/546904/%E5%BE%AE%E8%BD%AFRewards%E8%87%AA%E5%8A%A8%E6%90%9C%E7%B4%A2%E8%84%9A%E6%9C%AC-%E9%87%8D%E6%9E%84%E7%89%88.user.js
+// @updateURL https://update.greasyfork.org/scripts/546904/%E5%BE%AE%E8%BD%AFRewards%E8%87%AA%E5%8A%A8%E6%90%9C%E7%B4%A2%E8%84%9A%E6%9C%AC-%E9%87%8D%E6%9E%84%E7%89%88.meta.js
 // ==/UserScript==
 
 /**
