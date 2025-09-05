@@ -918,16 +918,16 @@ function showSearchWordsModal(words, wordType) {
         `;
     wordItem.innerHTML = `<strong>${index + 1}.</strong> ${word}`;
 
-    wordItem.onmouseover = () => {
+    wordItem.addEventListener('mouseover', () => {
       wordItem.style.background = '#e3f2fd';
       wordItem.style.borderColor = '#2196f3';
       wordItem.style.transform = 'translateY(-1px)';
-    };
-    wordItem.onmouseout = () => {
+    });
+    wordItem.addEventListener('mouseout', () => {
       wordItem.style.background = '#f8f9fa';
       wordItem.style.borderColor = '#e9ecef';
       wordItem.style.transform = 'translateY(0)';
-    };
+    });
 
     wordsList.appendChild(wordItem);
   });
@@ -950,11 +950,11 @@ function showSearchWordsModal(words, wordType) {
     `;
   document.head.appendChild(style);
 
-  overlay.onclick = (e) => {
+  overlay.addEventListener('click', (e) => {
     if (e.target === overlay) {
       overlay.remove();
     }
-  };
+  });
 
   document.body.appendChild(overlay);
 }
@@ -1009,7 +1009,7 @@ function showNotification(message, type = 'info') {
         font-weight: bold;
         opacity: 0.7;
     `;
-  closeBtn.onclick = () => notification.remove();
+  closeBtn.addEventListener('click', () => notification.remove());
   notification.appendChild(closeBtn);
 
   document.body.appendChild(notification);
@@ -1340,7 +1340,7 @@ function exec() {
   function smoothScrollToBottom(callback) {
     // callback 是可选参数
     // 移动端需要更长的等待时间，因为搜索结果加载较慢
-    const waitTime = isMobile ? 4000 : 1500;
+    const waitTime = isMobile ? 2000 : 1500;
 
     // 简化等待滚动日志
 
