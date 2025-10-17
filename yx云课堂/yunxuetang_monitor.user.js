@@ -587,6 +587,8 @@
       return; // 已经设置过，避免重复设置
     }
 
+    // 设置标志，防止重复调用
+    window.videoSpeedSet = true;
     addLog('检测到视频课程，准备设置播放倍数为2x', 'info');
 
     // 等待播放器加载完成
@@ -599,11 +601,9 @@
             if (currentRate !== 2) {
               player.bdPlayer.setPlaybackRate(2);
               addLog('通过播放器API设置视频倍数为2x', 'success');
-              window.videoSpeedSet = true;
               return;
             } else {
               addLog('视频倍数已经是2x', 'info');
-              window.videoSpeedSet = true;
               return;
             }
           } catch (e) {
@@ -629,7 +629,6 @@
             if (rate2xOption) {
               rate2xOption.click();
               addLog('通过DOM操作设置视频倍数为2x', 'success');
-              window.videoSpeedSet = true;
             } else {
               addLog('未找到2x倍数选项，尝试其他方法', 'warning');
               // 尝试直接通过播放器对象设置
@@ -646,81 +645,6 @@
     }, 2000); // 等待2秒确保播放器完全加载
   }
 
-  // 检查并启动视频自动播放
-  function checkAndStartVideoPlayback() {
-    // 检查当前课程是否为视频课程（非PDF）
-    const currentUrl = window.location.href;
-    const isVideoCourse = !currentUrl.includes('.pdf') &&
-      (currentUrl.includes('/video/') || currentUrl.includes('/package/video/'));
-
-    if (!isVideoCourse) {
-      return; // 不是视频课程，跳过
-    }
-
-    addLog('检测到视频课程，准备启动自动播放', 'info');
-
-    // 等待播放器加载完成
-    setTimeout(() => {
-      try {
-        // 方法1：通过播放器API启动播放
-        if (typeof player !== 'undefined' && player && player.bdPlayer) {
-          try {
-            const playerState = player.bdPlayer.getState();
-            if (playerState === 'paused' || playerState === 'idle') {
-              player.bdPlayer.play();
-              addLog('通过播放器API启动视频播放', 'success');
-              return;
-            } else if (playerState === 'playing') {
-              addLog('视频已经在播放中', 'info');
-              return;
-            }
-          } catch (e) {
-            addLog('播放器API启动失败，尝试DOM操作: ' + e.message, 'warning');
-          }
-        }
-
-        // 方法2：通过DOM操作点击播放按钮
-        const playButton = document.querySelector('.jw-icon-play') ||
-          document.querySelector('.jw-button-play') ||
-          document.querySelector('[class*="play"]');
-
-        if (playButton) {
-          addLog('找到播放按钮，准备点击启动播放', 'info');
-          playButton.click();
-          addLog('通过DOM操作启动视频播放', 'success');
-          return;
-        }
-
-        // 方法3：通过视频元素直接播放
-        const videoElement = document.querySelector('video');
-        if (videoElement) {
-          if (videoElement.paused) {
-            videoElement.play().then(() => {
-              addLog('通过video元素直接启动播放', 'success');
-            }).catch(e => {
-              addLog('video元素播放失败: ' + e.message, 'error');
-            });
-          } else {
-            addLog('video元素已经在播放中', 'info');
-          }
-          return;
-        }
-
-        // 方法4：通过全局播放器对象播放
-        if (typeof window.player !== 'undefined' && window.player) {
-          if (typeof window.player.play === 'function') {
-            window.player.play();
-            addLog('通过全局播放器对象启动播放', 'success');
-            return;
-          }
-        }
-
-        addLog('未找到可用的播放控制元素', 'warning');
-      } catch (error) {
-        addLog('启动视频播放时出错: ' + error.message, 'error');
-      }
-    }, 3000); // 等待3秒确保播放器完全加载
-  }
 
   // 直接设置视频倍数的备用方法
   function trySetVideoSpeedDirectly() {
@@ -730,7 +654,6 @@
         if (typeof window.player.setPlaybackRate === 'function') {
           window.player.setPlaybackRate(2);
           addLog('通过全局播放器对象设置视频倍数为2x', 'success');
-          window.videoSpeedSet = true;
           return;
         }
       }
@@ -740,7 +663,6 @@
       if (videoElement) {
         videoElement.playbackRate = 2;
         addLog('通过video元素直接设置播放倍数为2x', 'success');
-        window.videoSpeedSet = true;
         return;
       }
 
@@ -749,7 +671,6 @@
         if (typeof window.player.bdPlayer.setPlaybackRate === 'function') {
           window.player.bdPlayer.setPlaybackRate(2);
           addLog('通过YxtVideoPlayer实例设置视频倍数为2x', 'success');
-          window.videoSpeedSet = true;
           return;
         }
       }
@@ -1192,6 +1113,7 @@
     // 重置页面加载时间计时器和调试标志
     window.lastPageLoadTime = null;
     window.courseCompletionCheckStarted = false;
+    window.videoSpeedSet = false; // 重置视频倍数标志
 
     // 跳转到课程页面
     window.location.href = currentCourse.url;
@@ -1299,9 +1221,6 @@
 
     // 检查并设置视频播放倍数为2x
     checkAndSetVideoSpeed();
-
-    // 检查并启动视频自动播放
-    checkAndStartVideoPlayback();
 
     // 额外等待确保DOM元素稳定（避免元素刚出现但内容未更新的情况）
     const currentTime = Date.now();
@@ -1734,9 +1653,6 @@
 
       // 检查并设置视频播放倍数
       checkAndSetVideoSpeed();
-
-      // 检查并启动视频自动播放
-      checkAndStartVideoPlayback();
     } else {
       addLog('非学习页面，跳过自动滚动功能', 'info');
     }
