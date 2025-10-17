@@ -154,6 +154,85 @@
             font-size: 11px;
             margin-top: 10px;
         }
+        
+        /* 豆包AI助手弹窗样式 - 手机端小窗口 */
+        #doubao-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 600px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            z-index: 20000;
+            display: none;
+            overflow: hidden;
+            resize: both;
+            min-width: 350px;
+            min-height: 500px;
+            max-width: 90vw;
+            max-height: 90vh;
+        }
+        
+        #doubao-modal.show {
+            display: block;
+        }
+        
+        #doubao-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #doubao-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            font-size: 14px;
+            flex-shrink: 0;
+            cursor: move;
+        }
+        
+        #doubao-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background-color 0.2s;
+        }
+        
+        #doubao-close:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        #doubao-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            flex: 1;
+        }
+        
+        /* 调整大小手柄 */
+        #doubao-modal::-webkit-resizer {
+            background: #007bff;
+            border-radius: 0 0 12px 0;
+        }
     `);
 
     // 创建控制面板
@@ -178,6 +257,7 @@
                 <button class="btn-danger" id="stop-btn" style="display:none;">停止答题</button>
                 <button class="btn-secondary" id="analyze-btn">分析题目</button>
                 <button class="btn-secondary" id="copy-questions-btn">复制题目</button>
+                <button class="btn-secondary" id="doubao-btn">豆包AI助手</button>
                 <button class="btn-secondary" id="submit-btn">提交答案</button>
                 
                 <div class="config-item">
@@ -203,12 +283,14 @@
         const stopBtn = document.getElementById('stop-btn');
         const analyzeBtn = document.getElementById('analyze-btn');
         const copyQuestionsBtn = document.getElementById('copy-questions-btn');
+        const doubaoBtn = document.getElementById('doubao-btn');
         const submitBtn = document.getElementById('submit-btn');
 
         if (startBtn) startBtn.onclick = startAutoAnswer;
         if (stopBtn) stopBtn.onclick = stopAutoAnswer;
         if (analyzeBtn) analyzeBtn.onclick = analyzeQuestions;
         if (copyQuestionsBtn) copyQuestionsBtn.onclick = copyAllQuestions;
+        if (doubaoBtn) doubaoBtn.onclick = openDoubaoModal;
         if (submitBtn) submitBtn.onclick = submitExam;
 
         // 使面板可拖拽
@@ -240,6 +322,118 @@
             pos4 = e.clientY;
             element.style.top = (element.offsetTop - pos2) + "px";
             element.style.left = (element.offsetLeft - pos1) + "px";
+        }
+
+        function closeDragElement() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+        }
+    }
+
+    // 打开豆包AI助手弹窗
+    function openDoubaoModal() {
+        // 检查是否已存在弹窗
+        let modal = document.getElementById('doubao-modal');
+        if (modal) {
+            modal.classList.add('show');
+            return;
+        }
+
+        // 创建弹窗
+        modal = document.createElement('div');
+        modal.id = 'doubao-modal';
+        modal.innerHTML = `
+            <div id="doubao-container">
+                <div id="doubao-header">
+                    <span>🤖 豆包AI助手</span>
+                    <button id="doubao-close">×</button>
+                </div>
+                <iframe id="doubao-iframe" src="https://www.doubao.com/chat/search" allow="camera; microphone; geolocation"></iframe>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // 绑定关闭事件
+        const closeBtn = document.getElementById('doubao-close');
+        if (closeBtn) {
+            closeBtn.onclick = closeDoubaoModal;
+        }
+
+        // 使弹窗可拖拽
+        makeDoubaoDraggable(modal);
+
+        // ESC键关闭
+        const escapeHandler = function (e) {
+            if (e.key === 'Escape' && modal.classList.contains('show')) {
+                closeDoubaoModal();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
+
+        // 显示弹窗
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
+
+        log('豆包AI助手已打开', 'success');
+    }
+
+    // 关闭豆包AI助手弹窗
+    function closeDoubaoModal() {
+        const modal = document.getElementById('doubao-modal');
+        if (modal) {
+            modal.classList.remove('show');
+            // 延迟移除DOM元素，让动画完成
+            setTimeout(() => {
+                if (modal.parentNode) {
+                    modal.parentNode.removeChild(modal);
+                }
+            }, 300);
+        }
+    }
+
+    // 使豆包弹窗可拖拽
+    function makeDoubaoDraggable(element) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        const header = element.querySelector('#doubao-header');
+
+        if (!header) return;
+
+        header.onmousedown = dragMouseDown;
+
+        function dragMouseDown(e) {
+            e = e || window.event;
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            document.onmousemove = elementDrag;
+        }
+
+        function elementDrag(e) {
+            e = e || window.event;
+            e.preventDefault();
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+
+            // 计算新位置
+            let newTop = element.offsetTop - pos2;
+            let newLeft = element.offsetLeft - pos1;
+
+            // 边界检查，防止拖拽到屏幕外
+            const maxTop = window.innerHeight - element.offsetHeight;
+            const maxLeft = window.innerWidth - element.offsetWidth;
+
+            newTop = Math.max(0, Math.min(newTop, maxTop));
+            newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+
+            element.style.top = newTop + "px";
+            element.style.left = newLeft + "px";
+            element.style.transform = "none"; // 移除居中定位
         }
 
         function closeDragElement() {

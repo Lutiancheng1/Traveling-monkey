@@ -235,6 +235,21 @@
       font-size: 9px !important;
       word-break: break-all !important;
     }
+    #yunxuetang-monitor-panel .current-course-item {
+      background: #e3f2fd !important;
+      border: 2px solid #2196f3 !important;
+      box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3) !important;
+    }
+    #yunxuetang-monitor-panel .current-course-badge {
+      background: #2196f3 !important;
+      color: white !important;
+      font-size: 9px !important;
+      padding: 2px 6px !important;
+      border-radius: 10px !important;
+      margin-top: 4px !important;
+      display: inline-block !important;
+      font-weight: bold !important;
+    }
   `);
 
 
@@ -300,7 +315,7 @@
 
       // 更新总体进度
       if (overallProgressDiv && autoLearningState) {
-        const currentIndex = autoLearningState.currentCourseIndex || 0;
+        const currentIndex = autoLearningState.currentIndex || 0;
         const totalCourses = autoLearningState.courseLinks ? autoLearningState.courseLinks.length : 0;
         overallProgressDiv.textContent = `${currentIndex + 1}/${totalCourses}`;
       }
@@ -499,9 +514,17 @@
           if (course && course.title && course.url) {
             const courseItem = document.createElement('div');
             courseItem.className = 'course-link-item';
+
+            // 检查是否为当前课程
+            const isCurrentCourse = autoLearningState && autoLearningState.currentIndex === index;
+            if (isCurrentCourse) {
+              courseItem.classList.add('current-course-item');
+            }
+
             courseItem.innerHTML = `
                <div class="course-link-title">${index + 1}. ${course.title}</div>
                <div class="course-link-url">${course.url}</div>
+               ${isCurrentCourse ? '<div class="current-course-badge">当前课程</div>' : ''}
              `;
             courseItem.addEventListener('click', () => {
               window.open(course.url, '_blank');
@@ -512,6 +535,11 @@
         courseLinksSection.style.display = 'block';
         showCoursesBtn.textContent = '隐藏课程列表';
         addLog(`显示课程列表，共 ${autoLearningState.courseLinks.length} 门课程`, 'info');
+
+        // 自动滚动到当前课程
+        setTimeout(() => {
+          scrollToCurrentCourse();
+        }, 100);
       } else {
         addLog('暂无课程数据', 'warning');
       }
@@ -519,6 +547,216 @@
       // 隐藏课程列表
       courseLinksSection.style.display = 'none';
       showCoursesBtn.textContent = '查看课程列表';
+    }
+  }
+
+  // 滚动到当前课程
+  function scrollToCurrentCourse() {
+    const courseLinksContainer = controlPanel.querySelector('.course-links');
+    const currentCourseItem = courseLinksContainer.querySelector('.current-course-item');
+
+    if (currentCourseItem && courseLinksContainer) {
+      // 计算滚动位置，让当前课程居中显示
+      const containerHeight = courseLinksContainer.clientHeight;
+      const itemHeight = currentCourseItem.offsetHeight;
+      const itemTop = currentCourseItem.offsetTop;
+      const scrollTop = itemTop - (containerHeight / 2) + (itemHeight / 2);
+
+      courseLinksContainer.scrollTo({
+        top: Math.max(0, scrollTop),
+        behavior: 'smooth'
+      });
+
+      addLog(`已滚动到当前课程位置 (第${autoLearningState.currentIndex + 1}门)`, 'info');
+    }
+  }
+
+  // 检查并设置视频播放倍数为2x
+  function checkAndSetVideoSpeed() {
+    // 检查当前课程是否为视频课程（非PDF）
+    const currentUrl = window.location.href;
+    const isVideoCourse = !currentUrl.includes('.pdf') &&
+      (currentUrl.includes('/video/') || currentUrl.includes('/package/video/'));
+
+    if (!isVideoCourse) {
+      return; // 不是视频课程，跳过
+    }
+
+    // 检查是否已经设置过2x倍数
+    if (window.videoSpeedSet) {
+      return; // 已经设置过，避免重复设置
+    }
+
+    addLog('检测到视频课程，准备设置播放倍数为2x', 'info');
+
+    // 等待播放器加载完成
+    setTimeout(() => {
+      try {
+        // 方法1：通过播放器API设置倍数
+        if (typeof player !== 'undefined' && player && player.bdPlayer) {
+          try {
+            const currentRate = player.bdPlayer.getPlaybackRate();
+            if (currentRate !== 2) {
+              player.bdPlayer.setPlaybackRate(2);
+              addLog('通过播放器API设置视频倍数为2x', 'success');
+              window.videoSpeedSet = true;
+              return;
+            } else {
+              addLog('视频倍数已经是2x', 'info');
+              window.videoSpeedSet = true;
+              return;
+            }
+          } catch (e) {
+            addLog('播放器API设置失败，尝试DOM操作: ' + e.message, 'warning');
+          }
+        }
+
+        // 方法2：通过DOM操作点击2x选项
+        const playRateButton = document.querySelector('.jw-icon-playrate');
+        if (playRateButton) {
+          addLog('找到播放倍数按钮，准备点击设置2x', 'info');
+
+          // 点击播放倍数按钮打开菜单
+          playRateButton.click();
+
+          setTimeout(() => {
+            // 查找2x选项并点击
+            const rate2xOption = document.querySelector('.jw-option[data-rate="2"]') ||
+              Array.from(document.querySelectorAll('.jw-option')).find(option =>
+                option.textContent.includes('×2') || option.textContent.includes('2')
+              );
+
+            if (rate2xOption) {
+              rate2xOption.click();
+              addLog('通过DOM操作设置视频倍数为2x', 'success');
+              window.videoSpeedSet = true;
+            } else {
+              addLog('未找到2x倍数选项，尝试其他方法', 'warning');
+              // 尝试直接通过播放器对象设置
+              trySetVideoSpeedDirectly();
+            }
+          }, 500);
+        } else {
+          addLog('未找到播放倍数按钮，尝试直接设置', 'warning');
+          trySetVideoSpeedDirectly();
+        }
+      } catch (error) {
+        addLog('设置视频倍数时出错: ' + error.message, 'error');
+      }
+    }, 2000); // 等待2秒确保播放器完全加载
+  }
+
+  // 检查并启动视频自动播放
+  function checkAndStartVideoPlayback() {
+    // 检查当前课程是否为视频课程（非PDF）
+    const currentUrl = window.location.href;
+    const isVideoCourse = !currentUrl.includes('.pdf') &&
+      (currentUrl.includes('/video/') || currentUrl.includes('/package/video/'));
+
+    if (!isVideoCourse) {
+      return; // 不是视频课程，跳过
+    }
+
+    addLog('检测到视频课程，准备启动自动播放', 'info');
+
+    // 等待播放器加载完成
+    setTimeout(() => {
+      try {
+        // 方法1：通过播放器API启动播放
+        if (typeof player !== 'undefined' && player && player.bdPlayer) {
+          try {
+            const playerState = player.bdPlayer.getState();
+            if (playerState === 'paused' || playerState === 'idle') {
+              player.bdPlayer.play();
+              addLog('通过播放器API启动视频播放', 'success');
+              return;
+            } else if (playerState === 'playing') {
+              addLog('视频已经在播放中', 'info');
+              return;
+            }
+          } catch (e) {
+            addLog('播放器API启动失败，尝试DOM操作: ' + e.message, 'warning');
+          }
+        }
+
+        // 方法2：通过DOM操作点击播放按钮
+        const playButton = document.querySelector('.jw-icon-play') ||
+          document.querySelector('.jw-button-play') ||
+          document.querySelector('[class*="play"]');
+
+        if (playButton) {
+          addLog('找到播放按钮，准备点击启动播放', 'info');
+          playButton.click();
+          addLog('通过DOM操作启动视频播放', 'success');
+          return;
+        }
+
+        // 方法3：通过视频元素直接播放
+        const videoElement = document.querySelector('video');
+        if (videoElement) {
+          if (videoElement.paused) {
+            videoElement.play().then(() => {
+              addLog('通过video元素直接启动播放', 'success');
+            }).catch(e => {
+              addLog('video元素播放失败: ' + e.message, 'error');
+            });
+          } else {
+            addLog('video元素已经在播放中', 'info');
+          }
+          return;
+        }
+
+        // 方法4：通过全局播放器对象播放
+        if (typeof window.player !== 'undefined' && window.player) {
+          if (typeof window.player.play === 'function') {
+            window.player.play();
+            addLog('通过全局播放器对象启动播放', 'success');
+            return;
+          }
+        }
+
+        addLog('未找到可用的播放控制元素', 'warning');
+      } catch (error) {
+        addLog('启动视频播放时出错: ' + error.message, 'error');
+      }
+    }, 3000); // 等待3秒确保播放器完全加载
+  }
+
+  // 直接设置视频倍数的备用方法
+  function trySetVideoSpeedDirectly() {
+    try {
+      // 方法3：通过全局变量设置
+      if (typeof window.player !== 'undefined' && window.player) {
+        if (typeof window.player.setPlaybackRate === 'function') {
+          window.player.setPlaybackRate(2);
+          addLog('通过全局播放器对象设置视频倍数为2x', 'success');
+          window.videoSpeedSet = true;
+          return;
+        }
+      }
+
+      // 方法4：通过视频元素直接设置
+      const videoElement = document.querySelector('video');
+      if (videoElement) {
+        videoElement.playbackRate = 2;
+        addLog('通过video元素直接设置播放倍数为2x', 'success');
+        window.videoSpeedSet = true;
+        return;
+      }
+
+      // 方法5：通过YxtVideoPlayer实例设置
+      if (typeof window.player !== 'undefined' && window.player.bdPlayer) {
+        if (typeof window.player.bdPlayer.setPlaybackRate === 'function') {
+          window.player.bdPlayer.setPlaybackRate(2);
+          addLog('通过YxtVideoPlayer实例设置视频倍数为2x', 'success');
+          window.videoSpeedSet = true;
+          return;
+        }
+      }
+
+      addLog('所有方法都失败，无法设置视频倍数', 'error');
+    } catch (e) {
+      addLog('直接设置视频倍数失败: ' + e.message, 'error');
     }
   }
 
@@ -1059,6 +1297,12 @@
       return false;
     }
 
+    // 检查并设置视频播放倍数为2x
+    checkAndSetVideoSpeed();
+
+    // 检查并启动视频自动播放
+    checkAndStartVideoPlayback();
+
     // 额外等待确保DOM元素稳定（避免元素刚出现但内容未更新的情况）
     const currentTime = Date.now();
     if (!window.lastPageLoadTime) {
@@ -1161,6 +1405,13 @@
         if (actualCourseIndex !== -1 && actualCourseIndex !== autoLearningState.currentIndex) {
           addLog(`监控中检测到课程索引不匹配，从索引 ${autoLearningState.currentIndex} 更新为 ${actualCourseIndex}`, 'warning');
           autoLearningState.currentIndex = actualCourseIndex;
+
+          // 更新总体进度显示
+          const overallProgressDiv = controlPanel.querySelector('.overall-progress');
+          if (overallProgressDiv) {
+            overallProgressDiv.textContent = `${autoLearningState.currentIndex + 1}/${autoLearningState.courseLinks.length}`;
+          }
+
           saveAutoLearningState();
         }
       }
@@ -1173,6 +1424,12 @@
         const currentCourse = autoLearningState.courseLinks[autoLearningState.currentIndex];
         const progressPercent = Math.round(((autoLearningState.currentIndex + 1) / autoLearningState.courseLinks.length) * 100);
         updateLearningStatus(currentCourse ? (currentCourse.title || '未知课程') : '未知课程', `${progressPercent}%`, '监控中...');
+
+        // 更新总体进度显示
+        const overallProgressDiv = controlPanel.querySelector('.overall-progress');
+        if (overallProgressDiv) {
+          overallProgressDiv.textContent = `${autoLearningState.currentIndex + 1}/${autoLearningState.courseLinks.length}`;
+        }
       }
 
       // 检查并处理"继续学习"弹窗
@@ -1187,6 +1444,12 @@
         addLog(`${progress} 课程学习完成: ${currentCourse.title}`, 'success');
         autoLearningState.completedCount++;
         autoLearningState.currentIndex++;
+
+        // 更新总体进度显示
+        const overallProgressDiv = controlPanel.querySelector('.overall-progress');
+        if (overallProgressDiv) {
+          overallProgressDiv.textContent = `${autoLearningState.currentIndex + 1}/${autoLearningState.courseLinks.length}`;
+        }
 
         // 保存状态
         saveAutoLearningState();
@@ -1350,51 +1613,17 @@
     return '当前课程';
   }
 
-  // 简化通知函数 - 仅使用浏览器原生通知
+  // 简化通知函数 - 仅使用控制台日志，不显示浏览器通知
   function notifyUser(message, courseTitle = null) {
     // 获取课程标题
     const currentCourseTitle = courseTitle || getCurrentCourseTitle();
     const fullMessage = `课程：${currentCourseTitle}\n${message}`;
 
-    // 控制台输出
+    // 仅控制台输出，不显示浏览器通知
     addLog('🎉 云学堂监控通知: ' + fullMessage, 'success');
-
-    // 浏览器原生通知
-    if ('Notification' in window) {
-      if (Notification.permission === 'granted') {
-        const browserNotification = new Notification('🎓 云学堂课程完成', {
-          body: fullMessage,
-          icon: 'https://picobd.yunxuetang.cn/sys/asiainfo/others/202305/efc8749aa9474334a99be88b3c1131e5.ico',
-          requireInteraction: false,
-          silent: false,
-          tag: 'yunxuetang-course-complete'
-        });
-
-        // 点击通知时聚焦到当前标签页
-        browserNotification.onclick = function () {
-          window.focus();
-          browserNotification.close();
-        };
-
-        // 8秒后自动关闭浏览器通知
-        setTimeout(() => {
-          browserNotification.close();
-        }, 8000);
-      } else if (Notification.permission === 'default') {
-        // 请求通知权限
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            setTimeout(() => notifyUser(message, courseTitle), 100);
-          }
-        });
-      }
-    }
   }
 
-  // 请求通知权限
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
+  // 不再请求通知权限，因为已禁用浏览器通知
 
   // 监控状态
   let lastLeaveTime = '';
@@ -1502,6 +1731,12 @@
     if (isLearningPage()) {
       startAutoScroll();
       addLog('检测到学习页面，已启动自动滚动功能', 'info');
+
+      // 检查并设置视频播放倍数
+      checkAndSetVideoSpeed();
+
+      // 检查并启动视频自动播放
+      checkAndStartVideoPlayback();
     } else {
       addLog('非学习页面，跳过自动滚动功能', 'info');
     }
