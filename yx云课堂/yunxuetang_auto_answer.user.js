@@ -37,6 +37,9 @@
         DEBUG: true // 调试模式
     };
 
+    // 豆包窗口引用，用于后续聚焦/前置
+    let doubaoWin = null;
+
     // 全局状态
     let isRunning = false;
     let currentQuestionIndex = 0;
@@ -297,6 +300,66 @@
         makeDraggable(panel);
     }
 
+    // 保证存在豆包控制工具条（用于一键前置与快捷键）
+    function ensureDoubaoToolbar() {
+        if (document.getElementById('doubao-toolbar')) return;
+        const bar = document.createElement('div');
+        bar.id = 'doubao-toolbar';
+        bar.style.cssText = `
+            position: fixed; right: 16px; bottom: 16px; z-index: 2147483647;
+            background: rgba(0,0,0,0.75); color: #fff; padding: 8px 10px; border-radius: 8px;
+            display: flex; gap: 8px; align-items: center; box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+            backdrop-filter: saturate(150%) blur(6px); font-size: 12px;
+        `;
+        bar.innerHTML = `
+            <span style="opacity:.85">豆包</span>
+            <button id="focus-doubao-btn" style="background:#28a745;border:none;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;font-weight:bold;">前置豆包 ⌘/Ctrl+Shift+D</button>
+            <button id="hide-doubao-toolbar" style="background:#6c757d;border:none;color:#fff;padding:6px 8px;border-radius:6px;cursor:pointer;">隐藏</button>
+        `;
+        document.body.appendChild(bar);
+
+        const focusBtn = document.getElementById('focus-doubao-btn');
+        if (focusBtn) {
+            focusBtn.onclick = function () {
+                focusDoubaoWindow(true);
+            };
+        }
+
+        const hideBtn = document.getElementById('hide-doubao-toolbar');
+        if (hideBtn) {
+            hideBtn.onclick = function () {
+                bar.remove();
+            };
+        }
+
+        // 快捷键：Cmd/Ctrl + Shift + D
+        document.addEventListener('keydown', function (e) {
+            const isCmd = e.metaKey || e.ctrlKey;
+            if (isCmd && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+                focusDoubaoWindow(true);
+            }
+        });
+    }
+
+    // 前置/聚焦豆包窗口，如不存在则重开
+    function focusDoubaoWindow(allowReopen = false) {
+        try {
+            if (doubaoWin && !doubaoWin.closed) {
+                try { doubaoWin.blur(); } catch (_) { }
+                try { window.focus(); } catch (_) { }
+                try { doubaoWin.focus(); } catch (_) { }
+                log('已尝试前置豆包窗口', 'success');
+                return true;
+            }
+        } catch (_) { }
+
+        if (allowReopen) {
+            openDoubaoModal();
+            return true;
+        }
+        return false;
+    }
+
     // 使面板可拖拽
     function makeDraggable(element) {
         let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
@@ -330,16 +393,37 @@
         }
     }
 
-    // 打开豆包AI助手弹窗
+    // 打开豆包AI助手（因目标站点的 CSP 限制，优先以独立小窗打开）
     function openDoubaoModal() {
-        // 检查是否已存在弹窗
+        try {
+            const width = 420;
+            const height = 740;
+            const left = Math.max(0, (window.screen.width - width) / 2);
+            const top = Math.max(0, (window.screen.height - height) / 2);
+            const features = `popup=yes,toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes,width=${width},height=${height},left=${left},top=${top}`;
+
+            const win = window.open('https://www.doubao.com/chat/search', 'doubao_ai_assistant', features);
+            if (win) {
+                doubaoWin = win;
+                // 尝试通过焦点切换把小窗带到前面
+                try { win.blur(); } catch (_) { }
+                try { window.focus(); } catch (_) { }
+                try { win.focus(); } catch (_) { }
+                log('已在独立小窗中打开豆包AI助手（避免iframe被CSP拦截）', 'success');
+                ensureDoubaoToolbar();
+                return;
+            }
+        } catch (_) {
+            // 忽略，进入回退逻辑
+        }
+
+        // 回退：弹出内嵌提示（无法内嵌豆包，提供按钮新窗口打开）
         let modal = document.getElementById('doubao-modal');
         if (modal) {
             modal.classList.add('show');
             return;
         }
 
-        // 创建弹窗
         modal = document.createElement('div');
         modal.id = 'doubao-modal';
         modal.innerHTML = `
@@ -348,22 +432,36 @@
                     <span>🤖 豆包AI助手</span>
                     <button id="doubao-close">×</button>
                 </div>
-                <iframe id="doubao-iframe" src="https://www.doubao.com/chat/search" allow="camera; microphone; geolocation"></iframe>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;font-size:13px;color:#333;">
+                    <div>
+                        <div style="margin-bottom:12px;">目标站点已设置安全策略（CSP），禁止被嵌入到 iframe。</div>
+                        <button id="open-doubao-newwin" style="background:#007bff;color:#fff;border:none;border-radius:6px;padding:10px 14px;cursor:pointer;font-weight:bold;">在新窗口打开豆包</button>
+                    </div>
+                </div>
             </div>
         `;
 
         document.body.appendChild(modal);
 
-        // 绑定关闭事件
         const closeBtn = document.getElementById('doubao-close');
         if (closeBtn) {
             closeBtn.onclick = closeDoubaoModal;
         }
 
-        // 使弹窗可拖拽
+        const openBtn = document.getElementById('open-doubao-newwin');
+        if (openBtn) {
+            openBtn.onclick = () => {
+                const width = 420;
+                const height = 740;
+                const left = Math.max(0, (window.screen.width - width) / 2);
+                const top = Math.max(0, (window.screen.height - height) / 2);
+                const features = `popup=yes,toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes,width=${width},height=${height},left=${left},top=${top}`;
+                window.open('https://www.doubao.com/chat/search', 'doubao_ai_assistant', features);
+            };
+        }
+
         makeDoubaoDraggable(modal);
 
-        // ESC键关闭
         const escapeHandler = function (e) {
             if (e.key === 'Escape' && modal.classList.contains('show')) {
                 closeDoubaoModal();
@@ -372,12 +470,12 @@
         };
         document.addEventListener('keydown', escapeHandler);
 
-        // 显示弹窗
         setTimeout(() => {
             modal.classList.add('show');
         }, 10);
 
-        log('豆包AI助手已打开', 'success');
+        log('已显示回退提示（CSP 限制无法内嵌），提供新窗口打开按钮', 'warning');
+        ensureDoubaoToolbar();
     }
 
     // 关闭豆包AI助手弹窗
